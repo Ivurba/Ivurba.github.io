@@ -412,7 +412,7 @@ function iniciarSesion() {
     
     // Redirigir a main.html después de 2 segundos
     setTimeout(() => {
-      window.location.href = "main.html";
+      window.location.href = "index.html";
     }, 2000);
   } else {
     mostrarMensaje(mensaje, "Usuario o contraseña incorrectos", "error");
@@ -445,4 +445,5 @@ if (listaPersonalizada) {
       accederALista();
     }
   });
+
 }
