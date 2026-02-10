@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Añadir Recomendación</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="formulario-container">
+        <h2>Añadir Nueva Recomendación</h2>
+        
+        <label>Nombre:</label>
+        <input type="text" id="txtNombreNuevo" placeholder="Nombre">
+        
+        <label>Tipo:</label>
+        <select id="lstTipoNuevo">
+            <option value="">-- Selecciona un tipo --</option>
+        </select>
+        
+        <label>Portada (imagen):</label>
+        <input type="file" id="PortadaNueva" accept="image/*">
+
+        <label>Agregar a mi lista personalizada (opcional):</label>
+        <input type="text" id="listaNuevaRecomendacion" placeholder="Ej: Mis favoritos">
+        
+        <button onclick="anadir()">Añadir</button>
+        <button onclick="window.history.back()">Volver</button>
+    </div>
+    
+    <script src="main.js"></script>
+</body>
+</html>

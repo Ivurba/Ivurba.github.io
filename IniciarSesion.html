@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="contenedor-sesion">
+  <div class="contenedor">
+    <h2>Iniciar Sesión</h2>
+    <input type="text" id="usuarioLogin" placeholder="Usuario">
+    <input type="password" id="contrasenaLogin" placeholder="Contraseña">
+    <button onclick="iniciarSesion()">Iniciar Sesión</button>
+    <div id="mensajeLogin" class="mensaje"></div>
+  </div>
+
+  <div class="contenedor">
+    <h2>Registrarse</h2>
+    <input type="text" id="usuarioReg" placeholder="Usuario">
+    <input type="password" id="contrasenaReg" placeholder="Contraseña">
+    <input type="password" id="confirmarReg" placeholder="Confirmar Contraseña">
+    <button onclick="registrarse()">Registrarse</button>
+    <div id="mensajeReg" class="mensaje"></div>
+  </div>
+</div>
+
+<script src="main.js"></script>
+</body>
+</html>

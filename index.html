@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Recomendaciones</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="header-sesion">
+        <div id="infoUsuario"></div>
+        <button id="btnSesion" onclick="irALogin()">Iniciar Sesión</button>
+    </div>
+
+    <div class="busqueda-container">
+        <h2>Sistema de Búsqueda de Recomendaciones</h2>
+        
+        <input type="search" id="txtBuscar" placeholder="Buscar por nombre...">
+        
+        <label for="lstTipo">Filtrar por tipo:</label>
+        <select id="lstTipo">
+            <option value="">Todos</option>
+        </select>
+
+        <label for="listaPersonalizada">Mi lista personalizada:</label>
+        <div class="lista-personalizada-grupo">
+            <input type="text" id="listaPersonalizada" placeholder="Escribe nombre de lista...">
+            <button id="btnAccederLista" onclick="accederALista()">Acceder</button>
+        </div>
+        
+        <div class="botones-grupo">
+            <button id="botonBuscar" onclick="buscar()">Buscar</button>
+            <button id="AñadirRecomendacion" onclick="window.open('Publicar.html')">Añadir Recomendación</button>
+        </div>
+        
+        <h3>Resultados:</h3>
+        <ul id="resultado"></ul>
+    </div>
+    
+    <script src="main.js"></script>
+</body>
+</html>
