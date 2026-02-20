@@ -375,7 +375,7 @@ async function anadir() {
 
   alert("Recomendación añadida correctamente");
 
-  window.location.href = "main.html";
+  window.location.href = "index.html";
 }
 
 // ===== FUNCIONES DE SESIÓN =====
