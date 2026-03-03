@@ -1,0 +1,16 @@
+[
+  {
+    "nombre": "El Quijote",
+    "tipo": "Libro",
+    "autor": "Miguel de Cervantes",
+    "enlace": "https://www.ejemplo.com/quijote",
+    "portada": ""
+  },
+  {
+    "nombre": "Inception",
+    "tipo": "Película",
+    "autor": "Christopher Nolan",
+    "enlace": "https://www.imdb.com/inception",
+    "portada": ""
+  }
+]

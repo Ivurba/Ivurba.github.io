@@ -16,6 +16,138 @@ const appStorage = (() => {
   }
 })();
 
+// ===== SERVICIO DE DATOS REMOTO (GitHub API) =====
+// Sincroniza datos con un repositorio GitHub automáticamente
+
+const GITHUB_USER = "Ivurba";
+const GITHUB_REPO = "Ivurba.github.io";
+const GITHUB_BRANCH = "main";
+const DATA_FILE = "datos-recomendaciones.json";
+const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}`;
+
+/**
+ * Obtiene el token de GitHub (desde sesión o pregunta al usuario)
+ */
+function getGitHubToken() {
+  let token = sessionStorage.getItem("github_token");
+  if (!token) {
+    token = prompt("Se necesita tu Personal Access Token de GitHub para sincronizar datos.\nCópialos desde: https://github.com/settings/tokens\nToken:", "");
+    if (token) {
+      sessionStorage.setItem("github_token", token);
+    }
+  }
+  return token;
+}
+
+/**
+ * Lee el archivo JSON de GitHub
+ */
+async function obtenerDatosRemotos() {
+  try {
+    const token = getGitHubToken();
+    if (!token) return [];
+    const resp = await fetch(
+      `${GITHUB_API_URL}/contents/${DATA_FILE}?ref=${GITHUB_BRANCH}`,
+      {
+        headers: {
+          "Authorization": `token ${token}`,
+          "Accept": "application/vnd.github.v3.raw"
+        }
+      }
+    );
+    if (!resp.ok) throw new Error("No se encontró el archivo en GitHub");
+    return await resp.json();
+  } catch (error) {
+    console.error("Error obteniendo datos de GitHub:", error);
+    // Fallback: intenta localStorage
+    const local = appStorage.getItem("datos");
+    return local ? JSON.parse(local) : [];
+  }
+}
+
+/**
+ * Escribe datos en el archivo JSON de GitHub
+ */
+async function guardarDatosEnGitHub(datos) {
+  try {
+    const token = getGitHubToken();
+    if (!token) throw new Error("Token no disponible");
+    // Obtén el SHA del archivo actual
+    const fileResp = await fetch(
+      `${GITHUB_API_URL}/contents/${DATA_FILE}?ref=${GITHUB_BRANCH}`,
+      {
+        headers: {
+          "Authorization": `token ${token}`
+        }
+      }
+    );
+    
+    const fileData = await fileResp.json();
+    const sha = fileData.sha;
+    
+    // Actualiza el archivo
+    const updateResp = await fetch(
+      `${GITHUB_API_URL}/contents/${DATA_FILE}`,
+      {
+        method: "PUT",
+        headers: {
+          "Authorization": `token ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message: `Actualizar recomendaciones - ${new Date().toLocaleString()}`,
+          content: btoa(JSON.stringify(datos, null, 2)), // base64
+          sha: sha,
+          branch: GITHUB_BRANCH
+        })
+      }
+    );
+    
+    if (!updateResp.ok) throw new Error("Error al guardar en GitHub");
+    return await updateResp.json();
+  } catch (error) {
+    console.error("Error guardando en GitHub:", error);
+    // Fallback: guarda localmente
+    appStorage.setItem("datos", JSON.stringify(datos));
+    throw error;
+  }
+}
+
+async function agregarDatoRemoto(dato) {
+  const datos = await obtenerDatosRemotos();
+  datos.push(dato);
+  await guardarDatosEnGitHub(datos);
+  return { status: "ok" };
+}
+
+async function eliminarDatoRemoto(nombre) {
+  const datos = await obtenerDatosRemotos();
+  const filtrados = datos.filter(d => d.nombre !== nombre);
+  await guardarDatosEnGitHub(filtrados);
+  return { status: "ok" };
+}
+
+/**
+ * Obtiene los tipos de las recomendaciones actuales
+ */
+async function obtenerTiposRemotos() {
+  const datos = await obtenerDatosRemotos();
+  return [...new Set(datos.map(d => d.tipo))];
+}
+
+async function agregarTipoRemoto(tipo) {
+  // Los tipos se manejan automáticamente con las recomendaciones
+  return { status: "ok", message: "Tipo agregado (automático)" };
+}
+
+async function eliminarTipoRemoto(tipo) {
+  // Elimina todas las recomendaciones de ese tipo
+  const datos = await obtenerDatosRemotos();
+  const filtrados = datos.filter(d => d.tipo !== tipo);
+  await guardarDatosEnGitHub(filtrados);
+  return { status: "ok" };
+}
+
 // ===== FUNCIONES DE SESIÓN =====
 
 // Función para verificar y mostrar estado de sesión
@@ -60,7 +192,7 @@ function irALogin() {
 function cerrarSesion() {
   appStorage.removeItem("sesionActiva");
   verificarSesion();
-  buscar();
+  buscar().catch(console.error);
   AbrirDashboard();
 }
 
@@ -193,20 +325,21 @@ function inicializarDatos() {
 }
 
 // Función para cargar los tipos en las listas
-function cargarTipos() {
-  const datosJSON = appStorage.getItem("datos");
-  
-  if (!datosJSON) {
-    inicializarDatos();
-    return cargarTipos();
+async function cargarTipos() {
+  let tiposUnicos = [];
+  try {
+    tiposUnicos = await obtenerTiposRemotos();
+  } catch (e) {
+    console.error("Error cargando tipos:", e);
+    const datosJSON = appStorage.getItem("datos");
+    if (datosJSON) {
+      const datos = JSON.parse(datosJSON);
+      tiposUnicos = [...new Set(datos.map(d => d.tipo))];
+    }
   }
-  
-  const datos = JSON.parse(datosJSON);
 
   const lstTipo = document.getElementById("lstTipo");
   const lstTipoNuevo = document.getElementById("lstTipoNuevo");
-
-  const tiposUnicos = [...new Set(datos.map(d => d.tipo))];
 
   // Lista de búsqueda (si existe en la página)
   if (lstTipo) {
@@ -239,19 +372,25 @@ function cargarTipos() {
 }
 
 // Función de búsqueda
-function buscar() {
+async function buscar() {
   const texto = document.getElementById("txtBuscar").value.toLowerCase();
   const tipo = document.getElementById("lstTipo").value;
   const Autor = document.getElementById("AutorBusqueda").value.toLowerCase();
   const resultado = document.getElementById("resultado");
 
-  const datosJSON = appStorage.getItem("datos");
-  if (!datosJSON) {
-    resultado.innerHTML = "<li>No hay datos</li>";
-    return;
+  let datos = [];
+  try {
+    datos = await obtenerDatosRemotos();
+  } catch (e) {
+    console.error("Error obteniendo datos:", e);
+    const datosJSON = appStorage.getItem("datos");
+    if (datosJSON) {
+      datos = JSON.parse(datosJSON);
+    } else {
+      resultado.innerHTML = "<li>No hay datos disponibles</li>";
+      return;
+    }
   }
-
-  const datos = JSON.parse(datosJSON);
 
 const filtrados = datos.filter(d =>
   d.nombre.toLowerCase().includes(texto) &&
@@ -381,7 +520,6 @@ async function anadir() {
   const nombre = document.getElementById("txtNombreNuevo").value.trim();
   const tipo = document.getElementById("lstTipoNuevo").value;
   const archivoPortada = document.getElementById("PortadaNueva").files[0];
-  const btnAnadir = document.getElementById("btnAnadir");
   const enlaceInput = document.getElementById("txtEnlaceNuevo");
   const enlace = enlaceInput ? enlaceInput.value.trim() : "";
 
@@ -415,11 +553,7 @@ async function anadir() {
     return;
   }
 
-  const datosJSON = appStorage.getItem("datos");
-  const datos = datosJSON ? JSON.parse(datosJSON) : [];
-
-  const nuevoElemento = { nombre, tipo, autor };
-  nuevoElemento.enlace = enlace;
+  const nuevoElemento = { nombre, tipo, autor, enlace };
 
   // 📷 Si hay imagen
   if (archivoPortada) {
@@ -429,19 +563,25 @@ async function anadir() {
       alert("Error al cargar la imagen");
       return;
     }
+  } else {
+    nuevoElemento.portada = "";
   }
 
-  datos.push(nuevoElemento);
-  appStorage.setItem("datos", JSON.stringify(datos));
+  // Guardar en GitHub
+  try {
+    await agregarDatoRemoto(nuevoElemento);
+    alert("Recomendación añadida correctamente");
+  } catch (error) {
+    alert("Error al guardar: " + error.message);
+    return;
+  }
 
   // Limpiar campos
   document.getElementById("txtNombreNuevo").value = "";
   document.getElementById("PortadaNueva").value = "";
 
-  alert("Recomendación añadida correctamente");
-
   window.location.href = "index.html";
-}
+
 
 // ===== FUNCIONES DE SESIÓN =====
 
@@ -540,11 +680,11 @@ function mostrarMensaje(elemento, texto, tipo) {
 // Ejecutar al cargar la página
 inicializarDatos();
 if (document.getElementById("lstTipo") || document.getElementById("lstTipoNuevo")) {
-  cargarTipos();
+  cargarTipos().catch(console.error);
 }
 
 if (document.getElementById("txtBuscar")) {
-  buscar();
+  buscar().catch(console.error);
 }
 if (!appStorage.getItem("sesionActiva")) {}else{
 AbrirDashboard();
@@ -562,37 +702,40 @@ if (listaPersonalizada) {
     }
   });
 }
-function eliminarRecomendacion(nombre) {
-  const datos = JSON.parse(appStorage.getItem("datos")) || [];
+async function eliminarRecomendacion(nombre) {
   const sesionActiva = appStorage.getItem("sesionActiva");
 
-  if (!sesionActiva) return;
+  if (!sesionActiva) {
+    alert("Debes iniciar sesión para eliminar");
+    return;
+  }
 
-  const usuarioActual = JSON.parse(sesionActiva).usuario;
-
-  const nuevosDatos = datos.filter(d => 
-    !(d.nombre === nombre && d.autor === usuarioActual)
-  );
-
-  appStorage.setItem("datos", JSON.stringify(nuevosDatos));
-
-  buscar(); // refrescar lista
+  try {
+    await eliminarDatoRemoto(nombre);
+    buscar().catch(console.error); // refrescar lista
+  } catch (error) {
+    alert("Error al eliminar: " + error.message);
+  }
 }
 
 // ===== FUNCIONES DASHBOARD =====
-function BuscarAutorDashboard() {
+async function BuscarAutorDashboard() {
   const AutorBuscar = document.getElementById("txtBuscarDashboard").value.toLowerCase();
   const resultado = document.getElementById("dashboardList");
 
   if (!resultado) return; // Evita errores si el elemento no existe
 
-  const datosJSON = appStorage.getItem("datos");
-  if (!datosJSON) {
-    resultado.innerHTML = "<li>No hay datos</li>";
-    return;
+  let datos = [];
+  try {
+    datos = await obtenerDatosRemotos();
+  } catch (e) {
+    const datosJSON = appStorage.getItem("datos");
+    if (!datosJSON) {
+      resultado.innerHTML = "<li>No hay datos</li>";
+      return;
+    }
+    datos = JSON.parse(datosJSON);
   }
-
-  const datos = JSON.parse(datosJSON);
 
   // Filtrar por autor
   const filtrados = datos.filter(d =>
@@ -653,12 +796,13 @@ if (txtDashboard) {
   });
 }
 
-function eliminarRecomendacionDashboard(nombre) {
-  const datos = JSON.parse(appStorage.getItem("datos")) || [];
-
-  const nuevosDatos = datos.filter(d => d.nombre !== nombre);
-
-  appStorage.setItem("datos", JSON.stringify(nuevosDatos));
+async function eliminarRecomendacionDashboard(nombre) {
+  try {
+    await eliminarDatoRemoto(nombre);
+    BuscarAutorDashboard();
+  } catch (error) {
+    alert("Error al eliminar: " + error.message);
+  }
 }
 
 
@@ -683,7 +827,7 @@ function AbrirDashboard() {
 // ===== FUNCIONES DE GESTIÓN DE TIPOS =====
 
 // Función para agregar un tipo nuevo
-function agregarTipo() {
+async function agregarTipo() {
   const inputTipo = document.getElementById("nuevoTipo");
   const nuevoTipo = inputTipo.value.trim();
 
@@ -692,56 +836,65 @@ function agregarTipo() {
     return;
   }
 
-  const datosJSON = appStorage.getItem("datos");
-  const datos = datosJSON ? JSON.parse(datosJSON) : [];
+  // Obtener tipos actuales
+  let tiposExistentes = [];
+  try {
+    tiposExistentes = await obtenerTiposRemotos();
+  } catch (e) {
+    const datosJSON = appStorage.getItem("datos");
+    const datos = datosJSON ? JSON.parse(datosJSON) : [];
+    tiposExistentes = [...new Set(datos.map(d => d.tipo))];
+  }
 
   // Verificar si el tipo ya existe
-  if (datos.some(d => d.tipo === nuevoTipo)) {
+  if (tiposExistentes.includes(nuevoTipo)) {
     alert("Este tipo ya existe");
     return;
   }
-
-  // Agregar un elemento de ejemplo con el nuevo tipo
-  datos.push({ nombre: `${nuevoTipo} (ejemplo)`, tipo: nuevoTipo, autor: "Sistema" });
-  appStorage.setItem("datos", JSON.stringify(datos));
 
   // Limpiar input
   inputTipo.value = "";
 
   // Actualizar listas
-  cargarTipos();
-  mostrarListaTipos();
+  cargarTipos().catch(console.error);
+  mostrarListaTipos().catch(console.error);
   alert(`Tipo "${nuevoTipo}" agregado correctamente`);
 }
 
 // Función para quitar un tipo
-function quitarTipo(tipo) {
+async function quitarTipo(tipo) {
   if (!confirm(`¿Está seguro de que desea eliminar el tipo "${tipo}"?`)) {
     return;
   }
 
-  const datosJSON = appStorage.getItem("datos");
-  const datos = datosJSON ? JSON.parse(datosJSON) : [];
-
-  // Eliminar todos los elementos con ese tipo
-  const nuevosDatos = datos.filter(d => d.tipo !== tipo);
-  appStorage.setItem("datos", JSON.stringify(nuevosDatos));
-
-  // Actualizar listas
-  cargarTipos();
-  mostrarListaTipos();
-  alert(`Tipo "${tipo}" y sus recomendaciones eliminados`);
+  try {
+    // Obtener datos y filtrar
+    const datos = await obtenerDatosRemotos();
+    const filtrados = datos.filter(d => d.tipo !== tipo);
+    await guardarDatosEnGitHub(filtrados);
+    
+    // Actualizar listas
+    cargarTipos().catch(console.error);
+    mostrarListaTipos().catch(console.error);
+    alert(`Tipo "${tipo}" y sus recomendaciones eliminados`);
+  } catch (error) {
+    alert("Error al eliminar: " + error.message);
+  }
 }
 
 // Función para mostrar la lista de tipos en el dashboard
-function mostrarListaTipos() {
+async function mostrarListaTipos() {
   const listaTipos = document.getElementById("listaTipos");
   if (!listaTipos) return;
 
-  const datosJSON = appStorage.getItem("datos");
-  const datos = datosJSON ? JSON.parse(datosJSON) : [];
-
-  const tiposUnicos = [...new Set(datos.map(d => d.tipo))];
+  let tiposUnicos = [];
+  try {
+    tiposUnicos = await obtenerTiposRemotos();
+  } catch (e) {
+    const datosJSON = appStorage.getItem("datos");
+    const datos = datosJSON ? JSON.parse(datosJSON) : [];
+    tiposUnicos = [...new Set(datos.map(d => d.tipo))];
+  }
 
   listaTipos.innerHTML = "";
 
@@ -773,7 +926,7 @@ function mostrarListaTipos() {
     btnEliminar.style.border = "none";
     btnEliminar.style.borderRadius = "4px";
     btnEliminar.style.cursor = "pointer";
-    btnEliminar.onclick = () => quitarTipo(tipo);
+    btnEliminar.onclick = () => quitarTipo(tipo).catch(console.error);
 
     div.appendChild(span);
     div.appendChild(btnEliminar);
@@ -785,7 +938,6 @@ function mostrarListaTipos() {
 window.addEventListener("load", () => {
   const listaTipos = document.getElementById("listaTipos");
   if (listaTipos) {
-    mostrarListaTipos();
+    mostrarListaTipos().catch(console.error);
   }
 });
-
