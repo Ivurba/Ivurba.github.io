@@ -1,8 +1,26 @@
+// ===== ALMACENAMIENTO UNIVERSAL (funciona en file:// y https://) =====
+const appStorage = (() => {
+  let memoryStorage = {};
+  try {
+    localStorage.setItem("__test__", "test");
+    localStorage.removeItem("__test__");
+    return localStorage;
+  } catch (e) {
+    console.log("localStorage no disponible, usando almacenamiento en memoria");
+    return {
+      setItem: (key, value) => { memoryStorage[key] = value; },
+      getItem: (key) => { return memoryStorage[key] || null; },
+      removeItem: (key) => { delete memoryStorage[key]; },
+      clear: () => { memoryStorage = {}; }
+    };
+  }
+})();
+
 // ===== FUNCIONES DE SESIÓN =====
 
 // Función para verificar y mostrar estado de sesión
 function verificarSesion() {
-  const sesionActiva = localStorage.getItem("sesionActiva");
+  const sesionActiva = appStorage.getItem("sesionActiva");
   const infoUsuario = document.getElementById("infoUsuario");
   const btnSesion = document.getElementById("btnSesion");
 
@@ -40,7 +58,7 @@ function irALogin() {
 
 // Función para cerrar sesión
 function cerrarSesion() {
-  localStorage.removeItem("sesionActiva");
+  appStorage.removeItem("sesionActiva");
   verificarSesion();
   buscar();
   AbrirDashboard();
@@ -50,8 +68,8 @@ function cerrarSesion() {
 
 // Función para inicializar listas personalizadas
 function inicializarListas() {
-  if (!localStorage.getItem("listas")) {
-    localStorage.setItem("listas", JSON.stringify({}));
+  if (!appStorage.getItem("listas")) {
+    appStorage.setItem("listas", JSON.stringify({}));
   }
 }
 
@@ -64,12 +82,12 @@ function accederALista() {
     return;
   }
 
-  const listas = JSON.parse(localStorage.getItem("listas")) || {};
+  const listas = JSON.parse(appStorage.getItem("listas")) || {};
 
   // Si no existe, crear la lista
   if (!listas[nombreLista]) {
     listas[nombreLista] = { nombre: nombreLista, elementos: [] };
-    localStorage.setItem("listas", JSON.stringify(listas));
+    appStorage.setItem("listas", JSON.stringify(listas));
     alert(`Lista "${nombreLista}" creada`);
   }
 
@@ -86,7 +104,7 @@ function agregarALista(nombre, tipo) {
     return;
   }
 
-  const listas = JSON.parse(localStorage.getItem("listas")) || {};
+  const listas = JSON.parse(appStorage.getItem("listas")) || {};
   
   // Crear lista si no existe
   if (!listas[nombreLista]) {
@@ -102,14 +120,14 @@ function agregarALista(nombre, tipo) {
   }
 
   lista.elementos.push({ nombre, tipo });
-  localStorage.setItem("listas", JSON.stringify(listas));
+  appStorage.setItem("listas", JSON.stringify(listas));
   alert(`"${nombre}" agregado a "${nombreLista}"`);
 }
 
 // Función para mostrar elementos de lista personalizada
 function mostrarListaPersonalizada(nombreLista) {
   const resultado = document.getElementById("resultado");
-  const listas = JSON.parse(localStorage.getItem("listas")) || {};
+  const listas = JSON.parse(appStorage.getItem("listas")) || {};
 
   if (!listas[nombreLista]) {
     resultado.innerHTML = "<li>Esta lista no existe</li>";
@@ -154,15 +172,15 @@ function mostrarListaPersonalizada(nombreLista) {
 
 // Función para eliminar elemento de lista
 function eliminarDeLista(nombreLista, indiceElemento) {
-  const listas = JSON.parse(localStorage.getItem("listas")) || {};
+  const listas = JSON.parse(appStorage.getItem("listas")) || {};
   listas[nombreLista].elementos.splice(indiceElemento, 1);
-  localStorage.setItem("listas", JSON.stringify(listas));
+  appStorage.setItem("listas", JSON.stringify(listas));
   mostrarListaPersonalizada(nombreLista);
 }
 
 // Función para inicializar los datos si no existen en LocalStorage
 function inicializarDatos() {
-  if (!localStorage.getItem("datos")) {
+  if (!appStorage.getItem("datos")) {
    const datosIniciales = [
   { nombre: "El Quijote", tipo: "Libro", autor: "Miguel de Cervantes" },
   { nombre: "Cien años de soledad", tipo: "Libro", autor: "Gabriel García Márquez" },
@@ -170,13 +188,13 @@ function inicializarDatos() {
   { nombre: "The Matrix", tipo: "Película", autor: "Hermanas Wachowski" }
 ];
 
-    localStorage.setItem("datos", JSON.stringify(datosIniciales));
+    appStorage.setItem("datos", JSON.stringify(datosIniciales));
   }
 }
 
 // Función para cargar los tipos en las listas
 function cargarTipos() {
-  const datosJSON = localStorage.getItem("datos");
+  const datosJSON = appStorage.getItem("datos");
   
   if (!datosJSON) {
     inicializarDatos();
@@ -227,7 +245,7 @@ function buscar() {
   const Autor = document.getElementById("AutorBusqueda").value.toLowerCase();
   const resultado = document.getElementById("resultado");
 
-  const datosJSON = localStorage.getItem("datos");
+  const datosJSON = appStorage.getItem("datos");
   if (!datosJSON) {
     resultado.innerHTML = "<li>No hay datos</li>";
     return;
@@ -260,7 +278,23 @@ const filtrados = datos.filter(d =>
     contenedor.style.display = "flex";
     contenedor.style.alignItems = "center";
     
-    if (d.portada) {
+    if (d.portada && d.enlace) {
+      const a = document.createElement("a");
+      a.href = d.enlace;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+
+      const img = document.createElement("img");
+      img.src = d.portada;
+      img.style.width = "100px";
+      img.style.height = "150px";
+      img.style.objectFit = "cover";
+      img.style.marginRight = "10px";
+      img.style.cursor = "pointer";
+
+      a.appendChild(img);
+      contenedor.appendChild(a);
+    } else if (d.portada) {
       const img = document.createElement("img");
       img.src = d.portada;
       img.style.width = "100px";
@@ -268,6 +302,20 @@ const filtrados = datos.filter(d =>
       img.style.objectFit = "cover";
       img.style.marginRight = "10px";
       contenedor.appendChild(img);
+    } else if (d.enlace) {
+      const enlaceBtn = document.createElement("a");
+      enlaceBtn.href = d.enlace;
+      enlaceBtn.target = "_blank";
+      enlaceBtn.rel = "noopener noreferrer";
+      enlaceBtn.textContent = "Abrir enlace";
+      enlaceBtn.style.display = "inline-block";
+      enlaceBtn.style.marginRight = "10px";
+      enlaceBtn.style.padding = "8px 12px";
+      enlaceBtn.style.background = "#667eea";
+      enlaceBtn.style.color = "white";
+      enlaceBtn.style.borderRadius = "4px";
+      enlaceBtn.style.textDecoration = "none";
+      contenedor.appendChild(enlaceBtn);
     }
     
     const span = document.createElement("span");
@@ -290,7 +338,7 @@ const filtrados = datos.filter(d =>
     
     li.appendChild(btnAgregar);
     // Obtener usuario actual
-const sesionActiva = localStorage.getItem("sesionActiva");
+const sesionActiva = appStorage.getItem("sesionActiva");
 let usuarioActual = null;
 
 if (sesionActiva) {
@@ -334,8 +382,10 @@ async function anadir() {
   const tipo = document.getElementById("lstTipoNuevo").value;
   const archivoPortada = document.getElementById("PortadaNueva").files[0];
   const btnAnadir = document.getElementById("btnAnadir");
+  const enlaceInput = document.getElementById("txtEnlaceNuevo");
+  const enlace = enlaceInput ? enlaceInput.value.trim() : "";
 
-  const sesionActiva = localStorage.getItem("sesionActiva");
+  const sesionActiva = appStorage.getItem("sesionActiva");
 
   // 🚫 Si no hay sesión
   if (!sesionActiva) {
@@ -351,10 +401,25 @@ async function anadir() {
     return;
   }
 
-  const datosJSON = localStorage.getItem("datos");
+  // Enlace no opcional
+  if (!enlace) {
+    alert("El campo 'Enlace' es obligatorio.");
+    return;
+  }
+
+  // Validar formato básico de URL
+  try {
+    const testUrl = new URL(enlace);
+  } catch (err) {
+    alert("Escribe una URL válida (incluye http:// o https://)");
+    return;
+  }
+
+  const datosJSON = appStorage.getItem("datos");
   const datos = datosJSON ? JSON.parse(datosJSON) : [];
 
   const nuevoElemento = { nombre, tipo, autor };
+  nuevoElemento.enlace = enlace;
 
   // 📷 Si hay imagen
   if (archivoPortada) {
@@ -367,7 +432,7 @@ async function anadir() {
   }
 
   datos.push(nuevoElemento);
-  localStorage.setItem("datos", JSON.stringify(datos));
+  appStorage.setItem("datos", JSON.stringify(datos));
 
   // Limpiar campos
   document.getElementById("txtNombreNuevo").value = "";
@@ -375,15 +440,15 @@ async function anadir() {
 
   alert("Recomendación añadida correctamente");
 
-  window.location.href = "index.html";
+  window.location.href = "main.html";
 }
 
 // ===== FUNCIONES DE SESIÓN =====
 
 // Función para inicializar usuarios
 function inicializarUsuarios() {
-  if (!localStorage.getItem("usuarios")) {
-    localStorage.setItem("usuarios", JSON.stringify([]));
+  if (!appStorage.getItem("usuarios")) {
+    appStorage.setItem("usuarios", JSON.stringify([]));
   }
 }
 
@@ -411,7 +476,7 @@ function registrarse() {
   }
 
   inicializarUsuarios();
-  const usuarios = JSON.parse(localStorage.getItem("usuarios"));
+  const usuarios = JSON.parse(appStorage.getItem("usuarios"));
 
   // Verificar si el usuario ya existe
   if (usuarios.some(u => u.usuario === usuario)) {
@@ -421,7 +486,7 @@ function registrarse() {
 
   // Guardar nuevo usuario
   usuarios.push({ usuario, contrasena });
-  localStorage.setItem("usuarios", JSON.stringify(usuarios));
+  appStorage.setItem("usuarios", JSON.stringify(usuarios));
   
   mostrarMensaje(mensaje, "Registro exitoso. Ya puedes iniciar sesión", "exito");
   
@@ -443,19 +508,19 @@ function iniciarSesion() {
   }
 
   inicializarUsuarios();
-  const usuarios = JSON.parse(localStorage.getItem("usuarios"));
+  const usuarios = JSON.parse(appStorage.getItem("usuarios"));
 
   // Verificar credenciales
   const usuarioValido = usuarios.find(u => u.usuario === usuario && u.contrasena === contrasena);
 
   if (usuarioValido) {
-    localStorage.setItem("sesionActiva", JSON.stringify({ usuario }));
+    appStorage.setItem("sesionActiva", JSON.stringify({ usuario }));
     mostrarMensaje(mensaje, "Sesión iniciada correctamente. Redirigiendo...", "exito");
     AbrirDashboard();
     
     // Redirigir a main.html después de 2 segundos
     setTimeout(() => {
-      window.location.href = "index.html";
+      window.location.href = "main.html";
     }, 2000);
   } else {
     mostrarMensaje(mensaje, "Usuario o contraseña incorrectos", "error");
@@ -481,7 +546,7 @@ if (document.getElementById("lstTipo") || document.getElementById("lstTipoNuevo"
 if (document.getElementById("txtBuscar")) {
   buscar();
 }
-if (!localStorage.getItem("sesionActiva")) {}else{
+if (!appStorage.getItem("sesionActiva")) {}else{
 AbrirDashboard();
 }
 inicializarUsuarios();
@@ -498,8 +563,8 @@ if (listaPersonalizada) {
   });
 }
 function eliminarRecomendacion(nombre) {
-  const datos = JSON.parse(localStorage.getItem("datos")) || [];
-  const sesionActiva = localStorage.getItem("sesionActiva");
+  const datos = JSON.parse(appStorage.getItem("datos")) || [];
+  const sesionActiva = appStorage.getItem("sesionActiva");
 
   if (!sesionActiva) return;
 
@@ -509,7 +574,7 @@ function eliminarRecomendacion(nombre) {
     !(d.nombre === nombre && d.autor === usuarioActual)
   );
 
-  localStorage.setItem("datos", JSON.stringify(nuevosDatos));
+  appStorage.setItem("datos", JSON.stringify(nuevosDatos));
 
   buscar(); // refrescar lista
 }
@@ -521,7 +586,7 @@ function BuscarAutorDashboard() {
 
   if (!resultado) return; // Evita errores si el elemento no existe
 
-  const datosJSON = localStorage.getItem("datos");
+  const datosJSON = appStorage.getItem("datos");
   if (!datosJSON) {
     resultado.innerHTML = "<li>No hay datos</li>";
     return;
@@ -589,11 +654,11 @@ if (txtDashboard) {
 }
 
 function eliminarRecomendacionDashboard(nombre) {
-  const datos = JSON.parse(localStorage.getItem("datos")) || [];
+  const datos = JSON.parse(appStorage.getItem("datos")) || [];
 
   const nuevosDatos = datos.filter(d => d.nombre !== nombre);
 
-  localStorage.setItem("datos", JSON.stringify(nuevosDatos));
+  appStorage.setItem("datos", JSON.stringify(nuevosDatos));
 }
 
 
@@ -601,7 +666,7 @@ function AbrirDashboard() {
   const BtnDashboard = document.getElementById("btnDashboard");
   if (!BtnDashboard) return;
 
-  const sesionActiva = localStorage.getItem("sesionActiva");
+  const sesionActiva = appStorage.getItem("sesionActiva");
 
   // Siempre ocultar primero
   BtnDashboard.style.display = "none";
@@ -614,4 +679,113 @@ function AbrirDashboard() {
     BtnDashboard.style.display = "block";
   }
 }
+
+// ===== FUNCIONES DE GESTIÓN DE TIPOS =====
+
+// Función para agregar un tipo nuevo
+function agregarTipo() {
+  const inputTipo = document.getElementById("nuevoTipo");
+  const nuevoTipo = inputTipo.value.trim();
+
+  if (!nuevoTipo) {
+    alert("Escribe un tipo de recomendación");
+    return;
+  }
+
+  const datosJSON = appStorage.getItem("datos");
+  const datos = datosJSON ? JSON.parse(datosJSON) : [];
+
+  // Verificar si el tipo ya existe
+  if (datos.some(d => d.tipo === nuevoTipo)) {
+    alert("Este tipo ya existe");
+    return;
+  }
+
+  // Agregar un elemento de ejemplo con el nuevo tipo
+  datos.push({ nombre: `${nuevoTipo} (ejemplo)`, tipo: nuevoTipo, autor: "Sistema" });
+  appStorage.setItem("datos", JSON.stringify(datos));
+
+  // Limpiar input
+  inputTipo.value = "";
+
+  // Actualizar listas
+  cargarTipos();
+  mostrarListaTipos();
+  alert(`Tipo "${nuevoTipo}" agregado correctamente`);
+}
+
+// Función para quitar un tipo
+function quitarTipo(tipo) {
+  if (!confirm(`¿Está seguro de que desea eliminar el tipo "${tipo}"?`)) {
+    return;
+  }
+
+  const datosJSON = appStorage.getItem("datos");
+  const datos = datosJSON ? JSON.parse(datosJSON) : [];
+
+  // Eliminar todos los elementos con ese tipo
+  const nuevosDatos = datos.filter(d => d.tipo !== tipo);
+  appStorage.setItem("datos", JSON.stringify(nuevosDatos));
+
+  // Actualizar listas
+  cargarTipos();
+  mostrarListaTipos();
+  alert(`Tipo "${tipo}" y sus recomendaciones eliminados`);
+}
+
+// Función para mostrar la lista de tipos en el dashboard
+function mostrarListaTipos() {
+  const listaTipos = document.getElementById("listaTipos");
+  if (!listaTipos) return;
+
+  const datosJSON = appStorage.getItem("datos");
+  const datos = datosJSON ? JSON.parse(datosJSON) : [];
+
+  const tiposUnicos = [...new Set(datos.map(d => d.tipo))];
+
+  listaTipos.innerHTML = "";
+
+  if (tiposUnicos.length === 0) {
+    listaTipos.innerHTML = "<p>No hay tipos registrados</p>";
+    return;
+  }
+
+  tiposUnicos.forEach(tipo => {
+    const div = document.createElement("div");
+    div.className = "tipo-item";
+    div.style.display = "flex";
+    div.style.justifyContent = "space-between";
+    div.style.alignItems = "center";
+    div.style.padding = "10px";
+    div.style.marginBottom = "8px";
+    div.style.background = "#f0f0f0";
+    div.style.borderRadius = "4px";
+
+    const span = document.createElement("span");
+    span.textContent = tipo;
+    span.style.fontWeight = "bold";
+
+    const btnEliminar = document.createElement("button");
+    btnEliminar.textContent = "Eliminar";
+    btnEliminar.style.padding = "5px 10px";
+    btnEliminar.style.background = "#f5576c";
+    btnEliminar.style.color = "white";
+    btnEliminar.style.border = "none";
+    btnEliminar.style.borderRadius = "4px";
+    btnEliminar.style.cursor = "pointer";
+    btnEliminar.onclick = () => quitarTipo(tipo);
+
+    div.appendChild(span);
+    div.appendChild(btnEliminar);
+    listaTipos.appendChild(div);
+  });
+}
+
+// Cargar lista de tipos al entrar al dashboard
+window.addEventListener("load", () => {
+  const listaTipos = document.getElementById("listaTipos");
+  if (listaTipos) {
+    mostrarListaTipos();
+  }
+});
 

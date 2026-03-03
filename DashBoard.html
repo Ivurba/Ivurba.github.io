@@ -9,9 +9,23 @@
 </head>
 <body>
   <div class="dashboard-container">
-    <h2>Dashboard - Buscar Recomendaciones por Autor</h2>
+    <h2>Dashboard - Gestión de Recomendaciones</h2>
 
+    <!-- SECCIÓN DE GESTIÓN DE TIPOS -->
+    <div class="gestion-tipos">
+      <h3>Gestionar Tipos</h3>
+      <div class="tipo-input-grupo">
+        <input type="text" id="nuevoTipo" placeholder="Nuevo tipo...">
+        <button onclick="agregarTipo()">+ Agregar Tipo</button>
+      </div>
+      
+      <h4>Tipos actuales:</h4>
+      <div id="listaTipos" class="lista-tipos"></div>
+    </div>
+
+    <!-- SECCIÓN DE BÚSQUEDA -->
     <div class="busqueda-dashboard">
+      <h3>Buscar Recomendaciones por Autor</h3>
       <label for="txtBuscarDashboard">Buscar autor:</label>
       <input type="text" id="txtBuscarDashboard" placeholder="Escribe el nombre del autor...">
       <button onclick="BuscarAutorDashboard()">Buscar</button>
