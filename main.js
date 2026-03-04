@@ -16,136 +16,35 @@ const appStorage = (() => {
   }
 })();
 
-// ===== SERVICIO DE DATOS REMOTO (GitHub API) =====
-// Sincroniza datos con un repositorio GitHub automáticamente
-
-const GITHUB_USER = "Ivurba";
-const GITHUB_REPO = "Ivurba.github.io";
-const GITHUB_BRANCH = "main";
-const DATA_FILE = "datos-recomendaciones.json";
-const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}`;
-
-/**
- * Obtiene el token de GitHub (desde sesión o pregunta al usuario)
- */
-function getGitHubToken() {
-  let token = sessionStorage.getItem("github_token");
-  if (!token) {
-    token = prompt("Se necesita tu Personal Access Token de GitHub para sincronizar datos.\nCópialos desde: https://github.com/settings/tokens\nToken:", "");
-    if (token) {
-      sessionStorage.setItem("github_token", token);
+// ===== DATOS LOCALES =====
+// La aplicación usa datos almacenados en localStorage.
+// Si no existen, intenta cargar desde el archivo JSON estático
+// `datos-recomendaciones.json` (solo lectura).
+async function obtenerDatos() {
+  const almacen = appStorage.getItem("datos");
+  if (almacen) {
+    return JSON.parse(almacen);
+  }
+  try {
+    const resp = await fetch("datos-recomendaciones.json");
+    if (resp.ok) {
+      const datos = await resp.json();
+      appStorage.setItem("datos", JSON.stringify(datos));
+      return datos;
     }
+  } catch (e) {
+    console.error("Error cargando datos estáticos:", e);
   }
-  return token;
+  return [];
 }
 
-/**
- * Lee el archivo JSON de GitHub
- */
-async function obtenerDatosRemotos() {
-  try {
-    const token = getGitHubToken();
-    if (!token) return [];
-    const resp = await fetch(
-      `${GITHUB_API_URL}/contents/${DATA_FILE}?ref=${GITHUB_BRANCH}`,
-      {
-        headers: {
-          "Authorization": `token ${token}`,
-          "Accept": "application/vnd.github.v3.raw"
-        }
-      }
-    );
-    if (!resp.ok) throw new Error("No se encontró el archivo en GitHub");
-    return await resp.json();
-  } catch (error) {
-    console.error("Error obteniendo datos de GitHub:", error);
-    // Fallback: intenta localStorage
-    const local = appStorage.getItem("datos");
-    return local ? JSON.parse(local) : [];
-  }
+function guardarDatos(datos) {
+  appStorage.setItem("datos", JSON.stringify(datos));
 }
 
-/**
- * Escribe datos en el archivo JSON de GitHub
- */
-async function guardarDatosEnGitHub(datos) {
-  try {
-    const token = getGitHubToken();
-    if (!token) throw new Error("Token no disponible");
-    // Obtén el SHA del archivo actual
-    const fileResp = await fetch(
-      `${GITHUB_API_URL}/contents/${DATA_FILE}?ref=${GITHUB_BRANCH}`,
-      {
-        headers: {
-          "Authorization": `token ${token}`
-        }
-      }
-    );
-    
-    const fileData = await fileResp.json();
-    const sha = fileData.sha;
-    
-    // Actualiza el archivo
-    const updateResp = await fetch(
-      `${GITHUB_API_URL}/contents/${DATA_FILE}`,
-      {
-        method: "PUT",
-        headers: {
-          "Authorization": `token ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          message: `Actualizar recomendaciones - ${new Date().toLocaleString()}`,
-          content: btoa(JSON.stringify(datos, null, 2)), // base64
-          sha: sha,
-          branch: GITHUB_BRANCH
-        })
-      }
-    );
-    
-    if (!updateResp.ok) throw new Error("Error al guardar en GitHub");
-    return await updateResp.json();
-  } catch (error) {
-    console.error("Error guardando en GitHub:", error);
-    // Fallback: guarda localmente
-    appStorage.setItem("datos", JSON.stringify(datos));
-    throw error;
-  }
-}
-
-async function agregarDatoRemoto(dato) {
-  const datos = await obtenerDatosRemotos();
-  datos.push(dato);
-  await guardarDatosEnGitHub(datos);
-  return { status: "ok" };
-}
-
-async function eliminarDatoRemoto(nombre) {
-  const datos = await obtenerDatosRemotos();
-  const filtrados = datos.filter(d => d.nombre !== nombre);
-  await guardarDatosEnGitHub(filtrados);
-  return { status: "ok" };
-}
-
-/**
- * Obtiene los tipos de las recomendaciones actuales
- */
-async function obtenerTiposRemotos() {
-  const datos = await obtenerDatosRemotos();
+async function obtenerTipos() {
+  const datos = await obtenerDatos();
   return [...new Set(datos.map(d => d.tipo))];
-}
-
-async function agregarTipoRemoto(tipo) {
-  // Los tipos se manejan automáticamente con las recomendaciones
-  return { status: "ok", message: "Tipo agregado (automático)" };
-}
-
-async function eliminarTipoRemoto(tipo) {
-  // Elimina todas las recomendaciones de ese tipo
-  const datos = await obtenerDatosRemotos();
-  const filtrados = datos.filter(d => d.tipo !== tipo);
-  await guardarDatosEnGitHub(filtrados);
-  return { status: "ok" };
 }
 
 // ===== FUNCIONES DE SESIÓN =====
@@ -311,15 +210,26 @@ function eliminarDeLista(nombreLista, indiceElemento) {
 }
 
 // Función para inicializar los datos si no existen en LocalStorage
-function inicializarDatos() {
+async function inicializarDatos() {
   if (!appStorage.getItem("datos")) {
-   const datosIniciales = [
-  { nombre: "El Quijote", tipo: "Libro", autor: "Miguel de Cervantes" },
-  { nombre: "Cien años de soledad", tipo: "Libro", autor: "Gabriel García Márquez" },
-  { nombre: "Inception", tipo: "Película", autor: "Christopher Nolan" },
-  { nombre: "The Matrix", tipo: "Película", autor: "Hermanas Wachowski" }
-];
-
+    // primero intenta cargar desde el JSON estático
+    try {
+      const resp = await fetch("datos-recomendaciones.json");
+      if (resp.ok) {
+        const datosIniciales = await resp.json();
+        appStorage.setItem("datos", JSON.stringify(datosIniciales));
+        return;
+      }
+    } catch (e) {
+      console.error("Error cargando JSON inicial:", e);
+    }
+    // si falla la carga, usar valores por defecto
+    const datosIniciales = [
+      { nombre: "El Quijote", tipo: "Libro", autor: "Miguel de Cervantes" },
+      { nombre: "Cien años de soledad", tipo: "Libro", autor: "Gabriel García Márquez" },
+      { nombre: "Inception", tipo: "Película", autor: "Christopher Nolan" },
+      { nombre: "The Matrix", tipo: "Película", autor: "Hermanas Wachowski" }
+    ];
     appStorage.setItem("datos", JSON.stringify(datosIniciales));
   }
 }
@@ -328,7 +238,7 @@ function inicializarDatos() {
 async function cargarTipos() {
   let tiposUnicos = [];
   try {
-    tiposUnicos = await obtenerTiposRemotos();
+    tiposUnicos = await obtenerTipos();
   } catch (e) {
     console.error("Error cargando tipos:", e);
     const datosJSON = appStorage.getItem("datos");
@@ -378,19 +288,7 @@ async function buscar() {
   const Autor = document.getElementById("AutorBusqueda").value.toLowerCase();
   const resultado = document.getElementById("resultado");
 
-  let datos = [];
-  try {
-    datos = await obtenerDatosRemotos();
-  } catch (e) {
-    console.error("Error obteniendo datos:", e);
-    const datosJSON = appStorage.getItem("datos");
-    if (datosJSON) {
-      datos = JSON.parse(datosJSON);
-    } else {
-      resultado.innerHTML = "<li>No hay datos disponibles</li>";
-      return;
-    }
-  }
+  const datos = await obtenerDatos();
 
 const filtrados = datos.filter(d =>
   d.nombre.toLowerCase().includes(texto) &&
@@ -567,9 +465,11 @@ async function anadir() {
     nuevoElemento.portada = "";
   }
 
-  // Guardar en GitHub
+  // Guardar localmente
   try {
-    await agregarDatoRemoto(nuevoElemento);
+    const datos = await obtenerDatos();
+    datos.push(nuevoElemento);
+    guardarDatos(datos);
     alert("Recomendación añadida correctamente");
   } catch (error) {
     alert("Error al guardar: " + error.message);
@@ -678,16 +578,21 @@ function mostrarMensaje(elemento, texto, tipo) {
 }
 
 // Ejecutar al cargar la página
-inicializarDatos();
-if (document.getElementById("lstTipo") || document.getElementById("lstTipoNuevo")) {
-  cargarTipos().catch(console.error);
-}
+window.addEventListener("load", async () => {
+  await inicializarDatos();
 
-if (document.getElementById("txtBuscar")) {
-  buscar().catch(console.error);
-}
-if (!appStorage.getItem("sesionActiva")) {}else{
-AbrirDashboard();
+  if (document.getElementById("lstTipo") || document.getElementById("lstTipoNuevo")) {
+    cargarTipos().catch(console.error);
+  }
+
+  if (document.getElementById("txtBuscar")) {
+    buscar().catch(console.error);
+  }
+
+  if (appStorage.getItem("sesionActiva")) {
+    AbrirDashboard();
+  }
+});
 }
 inicializarUsuarios();
 inicializarListas();
@@ -711,7 +616,9 @@ async function eliminarRecomendacion(nombre) {
   }
 
   try {
-    await eliminarDatoRemoto(nombre);
+    const datos = await obtenerDatos();
+    const filtrados = datos.filter(d => d.nombre !== nombre);
+    guardarDatos(filtrados);
     buscar().catch(console.error); // refrescar lista
   } catch (error) {
     alert("Error al eliminar: " + error.message);
@@ -725,17 +632,7 @@ async function BuscarAutorDashboard() {
 
   if (!resultado) return; // Evita errores si el elemento no existe
 
-  let datos = [];
-  try {
-    datos = await obtenerDatosRemotos();
-  } catch (e) {
-    const datosJSON = appStorage.getItem("datos");
-    if (!datosJSON) {
-      resultado.innerHTML = "<li>No hay datos</li>";
-      return;
-    }
-    datos = JSON.parse(datosJSON);
-  }
+  const datos = await obtenerDatos();
 
   // Filtrar por autor
   const filtrados = datos.filter(d =>
@@ -798,7 +695,9 @@ if (txtDashboard) {
 
 async function eliminarRecomendacionDashboard(nombre) {
   try {
-    await eliminarDatoRemoto(nombre);
+    const datos = await obtenerDatos();
+    const filtrados = datos.filter(d => d.nombre !== nombre);
+    guardarDatos(filtrados);
     BuscarAutorDashboard();
   } catch (error) {
     alert("Error al eliminar: " + error.message);
@@ -839,7 +738,7 @@ async function agregarTipo() {
   // Obtener tipos actuales
   let tiposExistentes = [];
   try {
-    tiposExistentes = await obtenerTiposRemotos();
+    tiposExistentes = await obtenerTipos();
   } catch (e) {
     const datosJSON = appStorage.getItem("datos");
     const datos = datosJSON ? JSON.parse(datosJSON) : [];
@@ -869,9 +768,9 @@ async function quitarTipo(tipo) {
 
   try {
     // Obtener datos y filtrar
-    const datos = await obtenerDatosRemotos();
+    const datos = await obtenerDatos();
     const filtrados = datos.filter(d => d.tipo !== tipo);
-    await guardarDatosEnGitHub(filtrados);
+    guardarDatos(filtrados);
     
     // Actualizar listas
     cargarTipos().catch(console.error);
@@ -889,7 +788,7 @@ async function mostrarListaTipos() {
 
   let tiposUnicos = [];
   try {
-    tiposUnicos = await obtenerTiposRemotos();
+    tiposUnicos = await obtenerTipos();
   } catch (e) {
     const datosJSON = appStorage.getItem("datos");
     const datos = datosJSON ? JSON.parse(datosJSON) : [];
