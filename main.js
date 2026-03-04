@@ -1,4 +1,43 @@
-// ===== ALMACENAMIENTO UNIVERSAL (funciona en file:// y https://) =====
+// ===== INDEXEDDB - BASE DE DATOS EMBEBIDA EN EL NAVEGADOR =====
+let db = null;
+
+async function initDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('PaginaRecomendante', 1);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      db = request.result;
+      resolve(db);
+    };
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      
+      // Crear base de datos vacía si no existe
+      if (!db.objectStoreNames.contains('items')) {
+        const store = db.createObjectStore('items', { keyPath: 'id', autoIncrement: true });
+        store.createIndex('nombre', 'nombre', { unique: false });
+        store.createIndex('tipo', 'tipo', { unique: false });
+        store.createIndex('autor', 'autor', { unique: false });
+      }
+      
+      if (!db.objectStoreNames.contains('tipos')) {
+        db.createObjectStore('tipos', { keyPath: 'nombre', autoIncrement: false });
+      }
+      
+      if (!db.objectStoreNames.contains('listas')) {
+        db.createObjectStore('listas', { keyPath: 'nombre', autoIncrement: false });
+      }
+      
+      if (!db.objectStoreNames.contains('sesion')) {
+        db.createObjectStore('sesion', { keyPath: 'key' });
+      }
+    };
+  });
+}
+
+// fallback para localStorage si IndexedDB falla
 const appStorage = (() => {
   let memoryStorage = {};
   try {
@@ -68,41 +107,98 @@ async function escribirEnArchivo(datos) {
   }
 }
 
+// ===== FUNCIONES DE DATOS CON INDEXEDDB =====
+
 async function obtenerDatos() {
-  const almacen = appStorage.getItem("datos");
-  if (almacen) {
-    return JSON.parse(almacen);
-  }
-  try {
-    const resp = await fetch("datos-recomendaciones.json");
-    if (resp.ok) {
-      const datos = await resp.json();
-      appStorage.setItem("datos", JSON.stringify(datos));
-      return datos;
-    }
-  } catch (e) {
-    console.error("Error cargando datos estáticos:", e);
-  }
-  return [];
+  if (!db) await initDB();
+  
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('items', 'readonly');
+    const store = tx.objectStore('items');
+    const request = store.getAll();
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = async () => {
+      let datos = request.result;
+      
+      // si la BD está vacía, cargar desde JSON estático
+      if (datos.length === 0) {
+        try {
+          const resp = await fetch("datos-recomendaciones.json");
+          if (resp.ok) {
+            const json = await resp.json();
+            // insertar en BD
+            for (const item of json) {
+              await guardarItemEnDB(item);
+            }
+            datos = json;
+          }
+        } catch (e) {
+          console.error("Error cargando datos estáticos:", e);
+        }
+      }
+      resolve(datos || []);
+    };
+  });
 }
 
-function guardarDatos(datos, autoExport = true) {
-  // Guarda en almacenamiento local (o memoria)
-  appStorage.setItem("datos", JSON.stringify(datos));
-  // sincroniza también con el fichero elegido por el usuario
-  escribirEnArchivo(datos).catch(console.error);
-  // Al guardar, opcionalmente también generamos un archivo descargable
-  if (autoExport) {
-    exportarDatos();
-  }
+async function guardarItemEnDB(item) {
+  if (!db) await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('items', 'readwrite');
+    const store = tx.objectStore('items');
+    const request = item.id ? store.put(item) : store.add(item);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+  });
 }
+
+async function guardarDatos(datos, autoExport = true) {
+  if (!db) await initDB();
+  
+  // limpiar BD
+  return new Promise(async (resolve, reject) => {
+    const tx = db.transaction('items', 'readwrite');
+    const store = tx.objectStore('items');
+    const clearRequest = store.clear();
+    
+    clearRequest.onsuccess = async () => {
+      // insertar nuevos datos
+      for (const item of datos) {
+        await guardarItemEnDB(item);
+      }
+      
+      // sincronizar con archivo si existe
+      escribirEnArchivo(datos).catch(console.error);
+      
+      if (autoExport) {
+        exportarDatos(datos);
+      }
+      
+      resolve();
+    };
+    clearRequest.onerror = () => reject(clearRequest.error);
+  });
+}
+
+async function eliminarItemDeBD(id) {
+  if (!db) await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('items', 'readwrite');
+    const store = tx.objectStore('items');
+    const request = store.delete(id);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve();
+  });
+}
+
 
 // Genera y descarga un fichero JSON con los datos actuales.
 // El usuario debe aceptar la descarga y luego, si lo desea,
 // reemplazar el `datos-recomendaciones.json` en el proyecto.
-function exportarDatos() {
+function exportarDatos(datos) {
   try {
-    const contenido = appStorage.getItem("datos") || "[]";
+    const contenido = datos ? JSON.stringify(datos, null, 2) : "[]";
     const blob = new Blob([contenido], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -119,22 +215,37 @@ function exportarDatos() {
 }
 
 // Tipos extra almacenados por el usuario (además de los derivados de datos)
-function obtenerTiposAlmacenados() {
-  try {
-    return JSON.parse(appStorage.getItem("tipos") || "[]");
-  } catch {
-    return [];
-  }
+async function obtenerTiposAlmacenados() {
+  if (!db) await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('tipos', 'readonly');
+    const store = tx.objectStore('tipos');
+    const request = store.getAll();
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result.map(t => t.nombre));
+  });
 }
 
-function guardarTipos(tipos) {
-  appStorage.setItem("tipos", JSON.stringify(tipos));
+async function guardarTipos(tipos) {
+  if (!db) await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('tipos', 'readwrite');
+    const store = tx.objectStore('tipos');
+    const request = store.clear();
+    request.onsuccess = () => {
+      tipos.forEach(tipo => {
+        store.add({ nombre: tipo });
+      });
+      resolve();
+    };
+    request.onerror = () => reject(request.error);
+  });
 }
 
 async function obtenerTipos() {
   const datos = await obtenerDatos();
   const tiposDeDatos = [...new Set(datos.map(d => d.tipo))];
-  const almacenados = obtenerTiposAlmacenados();
+  const almacenados = await obtenerTiposAlmacenados();
   return [...new Set([...tiposDeDatos, ...almacenados])];
 }
 
@@ -942,6 +1053,14 @@ async function mostrarListaTipos() {
 
 // Cargar lista de tipos al entrar al dashboard
 window.addEventListener("load", async () => {
+  // inicializar BD
+  try {
+    await initDB();
+    console.log("IndexedDB inicializado correctamente");
+  } catch (e) {
+    console.error("Error inicializando IndexedDB:", e);
+  }
+  
   // si el usuario ha seleccionado un archivo JSON, cargar desde él
   if (jsonFileHandle) {
     await leerDesdeArchivo();
