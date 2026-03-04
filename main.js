@@ -216,37 +216,21 @@ function exportarDatos(datos) {
 
 // Tipos extra almacenados por el usuario (además de los derivados de datos)
 async function obtenerTiposAlmacenados() {
-  if (!db) await initDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('tipos', 'readonly');
-    const store = tx.objectStore('tipos');
-    const request = store.getAll();
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result.map(t => t.nombre));
-  });
+  // Los tipos se extraen de los datos, no se almacenan por separado
+  return [];
 }
 
 async function guardarTipos(tipos) {
-  if (!db) await initDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('tipos', 'readwrite');
-    const store = tx.objectStore('tipos');
-    const request = store.clear();
-    request.onsuccess = () => {
-      tipos.forEach(tipo => {
-        store.add({ nombre: tipo });
-      });
-      resolve();
-    };
-    request.onerror = () => reject(request.error);
-  });
+  // Los tipos se guardan como parte de los datos
+  // Esta función ahora es un no-op
+  return Promise.resolve();
 }
 
 async function obtenerTipos() {
   const datos = await obtenerDatos();
-  const tiposDeDatos = [...new Set(datos.map(d => d.tipo))];
-  const almacenados = await obtenerTiposAlmacenados();
-  return [...new Set([...tiposDeDatos, ...almacenados])];
+  if (!datos || datos.length === 0) return [];
+  const tiposDeDatos = [...new Set(datos.map(d => d.tipo).filter(t => t))];
+  return tiposDeDatos;
 }
 
 // ===== FUNCIONES DE SESIÓN =====
