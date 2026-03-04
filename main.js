@@ -1,40 +1,22 @@
+// ===== SUPABASE CONFIGURATION =====
+const SUPABASE_URL = 'https://yxjgcfyfdzbznenukfgc.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_y1SsVnV56ho8R52tBS-fOA_f51e8HrQ';
+
+// Headers para todas las peticiones a Supabase
+const supabaseHeaders = {
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${SUPABASE_KEY}`,
+  'Prefer': 'return=representation'
+};
+
 // ===== INDEXEDDB - BASE DE DATOS EMBEBIDA EN EL NAVEGADOR =====
 let db = null;
 
 async function initDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('PaginaRecomendante', 1);
-    
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      db = request.result;
-      resolve(db);
-    };
-    
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      
-      // Crear base de datos vacía si no existe
-      if (!db.objectStoreNames.contains('items')) {
-        const store = db.createObjectStore('items', { keyPath: 'id', autoIncrement: true });
-        store.createIndex('nombre', 'nombre', { unique: false });
-        store.createIndex('tipo', 'tipo', { unique: false });
-        store.createIndex('autor', 'autor', { unique: false });
-      }
-      
-      if (!db.objectStoreNames.contains('tipos')) {
-        db.createObjectStore('tipos', { keyPath: 'nombre', autoIncrement: false });
-      }
-      
-      if (!db.objectStoreNames.contains('listas')) {
-        db.createObjectStore('listas', { keyPath: 'nombre', autoIncrement: false });
-      }
-      
-      if (!db.objectStoreNames.contains('sesion')) {
-        db.createObjectStore('sesion', { keyPath: 'key' });
-      }
-    };
-  });
+  // Ya no necesitamos IndexedDB si usamos Supabase
+  // pero lo dejamos como fallback
+  console.log('Usando Supabase en la nube en lugar de IndexedDB');
+  return Promise.resolve();
 }
 
 // fallback para localStorage si IndexedDB falla
@@ -107,89 +89,107 @@ async function escribirEnArchivo(datos) {
   }
 }
 
-// ===== FUNCIONES DE DATOS CON INDEXEDDB =====
+// ===== FUNCIONES DE DATOS CON SUPABASE REST API =====
 
 async function obtenerDatos() {
-  if (!db) await initDB();
-  
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('items', 'readonly');
-    const store = tx.objectStore('items');
-    const request = store.getAll();
-    
-    request.onerror = () => reject(request.error);
-    request.onsuccess = async () => {
-      let datos = request.result;
-      
-      // si la BD está vacía, cargar desde JSON estático
-      if (datos.length === 0) {
-        try {
-          const resp = await fetch("datos-recomendaciones.json");
-          if (resp.ok) {
-            const json = await resp.json();
-            // insertar en BD
-            for (const item of json) {
-              await guardarItemEnDB(item);
-            }
-            datos = json;
-          }
-        } catch (e) {
-          console.error("Error cargando datos estáticos:", e);
-        }
+  try {
+    const resp = await fetch(
+      `${SUPABASE_URL}/rest/v1/recomendaciones?order=id.asc`,
+      {
+        method: 'GET',
+        headers: supabaseHeaders
       }
-      resolve(datos || []);
-    };
-  });
+    );
+    if (resp.ok) {
+      return await resp.json();
+    } else if (resp.status === 404) {
+      // tabla vacía o no existe
+      return [];
+    } else {
+      throw new Error(`Error: ${resp.status}`);
+    }
+  } catch (e) {
+    console.error('Error obteniendo datos de Supabase:', e);
+    return [];
+  }
 }
 
 async function guardarItemEnDB(item) {
-  if (!db) await initDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('items', 'readwrite');
-    const store = tx.objectStore('items');
-    const request = item.id ? store.put(item) : store.add(item);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-  });
+  try {
+    const endpoint = item.id
+      ? `${SUPABASE_URL}/rest/v1/recomendaciones?id=eq.${item.id}`
+      : `${SUPABASE_URL}/rest/v1/recomendaciones`;
+    
+    const method = item.id ? 'PATCH' : 'POST';
+    
+    const resp = await fetch(endpoint, {
+      method,
+      headers: supabaseHeaders,
+      body: JSON.stringify(item)
+    });
+    
+    if (!resp.ok) {
+      throw new Error(`Error: ${resp.status}`);
+    }
+    
+    const result = await resp.json();
+    return result[0]?.id || item.id;
+  } catch (e) {
+    console.error('Error guardando item en Supabase:', e);
+    throw e;
+  }
 }
 
 async function guardarDatos(datos, autoExport = true) {
-  if (!db) await initDB();
-  
-  // limpiar BD
-  return new Promise(async (resolve, reject) => {
-    const tx = db.transaction('items', 'readwrite');
-    const store = tx.objectStore('items');
-    const clearRequest = store.clear();
+  try {
+    // Eliminar todos los registros actuales
+    await fetch(`${SUPABASE_URL}/rest/v1/recomendaciones`, {
+      method: 'DELETE',
+      headers: supabaseHeaders
+    }).catch(() => {}); // ignorar error si no hay registros
     
-    clearRequest.onsuccess = async () => {
-      // insertar nuevos datos
-      for (const item of datos) {
-        await guardarItemEnDB(item);
+    // Insertar nuevos datos
+    if (datos.length > 0) {
+      const resp = await fetch(`${SUPABASE_URL}/rest/v1/recomendaciones`, {
+        method: 'POST',
+        headers: supabaseHeaders,
+        body: JSON.stringify(datos)
+      });
+      
+      if (!resp.ok) {
+        throw new Error(`Error: ${resp.status}`);
       }
-      
-      // sincronizar con archivo si existe
-      escribirEnArchivo(datos).catch(console.error);
-      
-      if (autoExport) {
-        exportarDatos(datos);
-      }
-      
-      resolve();
-    };
-    clearRequest.onerror = () => reject(clearRequest.error);
-  });
+    }
+    
+    // Sincronizar con archivo si existe
+    escribirEnArchivo(datos).catch(console.error);
+    
+    if (autoExport) {
+      exportarDatos(datos);
+    }
+  } catch (e) {
+    console.error('Error guardando datos en Supabase:', e);
+    throw e;
+  }
 }
 
 async function eliminarItemDeBD(id) {
-  if (!db) await initDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('items', 'readwrite');
-    const store = tx.objectStore('items');
-    const request = store.delete(id);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve();
-  });
+  try {
+    const resp = await fetch(
+      `${SUPABASE_URL}/rest/v1/recomendaciones?id=eq.${id}`,
+      {
+        method: 'DELETE',
+        headers: supabaseHeaders
+      }
+    );
+    
+    if (!resp.ok) {
+      throw new Error(`Error: ${resp.status}`);
+    }
+  } catch (e) {
+    console.error('Error eliminando item de Supabase:', e);
+    throw e;
+  }
 }
 
 
