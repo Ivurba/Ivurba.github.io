@@ -71,7 +71,7 @@ async function leerDesdeArchivo() {
     const file = await jsonFileHandle.getFile();
     const txt = await file.text();
     const datos = JSON.parse(txt || '[]');
-    appStorage.setItem('datos', JSON.stringify(datos));
+    await guardarDatos(datos, false);
     return datos;
   } catch (e) {
     console.error('Error leyendo archivo:', e);
@@ -411,34 +411,10 @@ function eliminarDeLista(nombreLista, indiceElemento) {
   mostrarListaPersonalizada(nombreLista);
 }
 
-// Función para inicializar los datos si no existen en LocalStorage
+// Función para inicializar datos (ahora usa solo Supabase)
 async function inicializarDatos() {
-  // inicializar el almacenamiento de tipos si no existe
-  if (!appStorage.getItem("tipos")) {
-    appStorage.setItem("tipos", JSON.stringify([]));
-  }
-
-  if (!appStorage.getItem("datos")) {
-    // primero intenta cargar desde el JSON estático
-    try {
-      const resp = await fetch("datos-recomendaciones.json");
-      if (resp.ok) {
-        const datosIniciales = await resp.json();
-        appStorage.setItem("datos", JSON.stringify(datosIniciales));
-        return;
-      }
-    } catch (e) {
-      console.error("Error cargando JSON inicial:", e);
-    }
-    // si falla la carga, usar valores por defecto
-    const datosIniciales = [
-      { nombre: "El Quijote", tipo: "Libro", autor: "Miguel de Cervantes" },
-      { nombre: "Cien años de soledad", tipo: "Libro", autor: "Gabriel García Márquez" },
-      { nombre: "Inception", tipo: "Película", autor: "Christopher Nolan" },
-      { nombre: "The Matrix", tipo: "Película", autor: "Hermanas Wachowski" }
-    ];
-    appStorage.setItem("datos", JSON.stringify(datosIniciales));
-  }
+  // Ya no necesitamos cargar del JSON, todo viene de Supabase
+  console.log('Datos se cargan desde Supabase');
 }
 
 // Función para cargar los tipos en las listas
