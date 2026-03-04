@@ -19,7 +19,55 @@ const appStorage = (() => {
 // ===== DATOS LOCALES =====
 // La aplicación usa datos almacenados en localStorage.
 // Si no existen, intenta cargar desde el archivo JSON estático
-// `datos-recomendaciones.json` (solo lectura).
+// `datos-recomendaciones.json` (solo lectura) o (si el usuario
+// ha seleccionado un fichero mediante la API de acceso a ficheros)
+// desde ese fichero.
+let jsonFileHandle = null; // referencia al archivo seleccionado
+
+async function seleccionarArchivoJSON() {
+  if (!('showOpenFilePicker' in window)) {
+    alert('Tu navegador no soporta la API de archivos.');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
+      excludeAcceptAllOption: true,
+      multiple: false
+    });
+    jsonFileHandle = handle;
+    // opcional: leer inmediatamente
+    await leerDesdeArchivo();
+    alert('Archivo sincronizado correctamente.');
+  } catch (e) {
+    console.error('No se seleccionó ningún archivo:', e);
+  }
+}
+
+async function leerDesdeArchivo() {
+  if (!jsonFileHandle) return;
+  try {
+    const file = await jsonFileHandle.getFile();
+    const txt = await file.text();
+    const datos = JSON.parse(txt || '[]');
+    appStorage.setItem('datos', JSON.stringify(datos));
+    return datos;
+  } catch (e) {
+    console.error('Error leyendo archivo:', e);
+  }
+}
+
+async function escribirEnArchivo(datos) {
+  if (!jsonFileHandle) return;
+  try {
+    const writable = await jsonFileHandle.createWritable();
+    await writable.write(JSON.stringify(datos, null, 2));
+    await writable.close();
+  } catch (e) {
+    console.error('Error escribiendo en archivo:', e);
+  }
+}
+
 async function obtenerDatos() {
   const almacen = appStorage.getItem("datos");
   if (almacen) {
@@ -41,6 +89,8 @@ async function obtenerDatos() {
 function guardarDatos(datos, autoExport = true) {
   // Guarda en almacenamiento local (o memoria)
   appStorage.setItem("datos", JSON.stringify(datos));
+  // sincroniza también con el fichero elegido por el usuario
+  escribirEnArchivo(datos).catch(console.error);
   // Al guardar, opcionalmente también generamos un archivo descargable
   if (autoExport) {
     exportarDatos();
@@ -891,7 +941,16 @@ async function mostrarListaTipos() {
 }
 
 // Cargar lista de tipos al entrar al dashboard
-window.addEventListener("load", () => {
+window.addEventListener("load", async () => {
+  // si el usuario ha seleccionado un archivo JSON, cargar desde él
+  if (jsonFileHandle) {
+    await leerDesdeArchivo();
+  } else if ('showOpenFilePicker' in window) {
+    if (confirm('¿Deseas seleccionar un archivo JSON para sincronizar (opcional)?')) {
+      await seleccionarArchivoJSON();
+    }
+  }
+
   const listaTipos = document.getElementById("listaTipos");
   if (listaTipos) {
     mostrarListaTipos().catch(console.error);
