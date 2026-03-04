@@ -42,9 +42,24 @@ function guardarDatos(datos) {
   appStorage.setItem("datos", JSON.stringify(datos));
 }
 
+// Tipos extra almacenados por el usuario (además de los derivados de datos)
+function obtenerTiposAlmacenados() {
+  try {
+    return JSON.parse(appStorage.getItem("tipos") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function guardarTipos(tipos) {
+  appStorage.setItem("tipos", JSON.stringify(tipos));
+}
+
 async function obtenerTipos() {
   const datos = await obtenerDatos();
-  return [...new Set(datos.map(d => d.tipo))];
+  const tiposDeDatos = [...new Set(datos.map(d => d.tipo))];
+  const almacenados = obtenerTiposAlmacenados();
+  return [...new Set([...tiposDeDatos, ...almacenados])];
 }
 
 // ===== FUNCIONES DE SESIÓN =====
@@ -211,6 +226,11 @@ function eliminarDeLista(nombreLista, indiceElemento) {
 
 // Función para inicializar los datos si no existen en LocalStorage
 async function inicializarDatos() {
+  // inicializar el almacenamiento de tipos si no existe
+  if (!appStorage.getItem("tipos")) {
+    appStorage.setItem("tipos", JSON.stringify([]));
+  }
+
   if (!appStorage.getItem("datos")) {
     // primero intenta cargar desde el JSON estático
     try {
@@ -751,6 +771,11 @@ async function agregarTipo() {
     return;
   }
 
+  // Guardar tipo en almacenamiento
+  const almacenados = obtenerTiposAlmacenados();
+  almacenados.push(nuevoTipo);
+  guardarTipos(almacenados);
+
   // Limpiar input
   inputTipo.value = "";
 
@@ -771,6 +796,10 @@ async function quitarTipo(tipo) {
     const datos = await obtenerDatos();
     const filtrados = datos.filter(d => d.tipo !== tipo);
     guardarDatos(filtrados);
+    
+    // quitar tipo de almacenados
+    const almacenados = obtenerTiposAlmacenados().filter(t => t !== tipo);
+    guardarTipos(almacenados);
     
     // Actualizar listas
     cargarTipos().catch(console.error);
