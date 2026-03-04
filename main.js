@@ -558,6 +558,8 @@ function registrarse() {
 
 // Función para iniciar sesión
 function iniciarSesion() {
+  // existe en la misma hoja, protegemos contra llamadas antes de cargar
+  if (typeof document === 'undefined') return;
   const usuario = document.getElementById("usuarioLogin").value.trim();
   const contrasena = document.getElementById("contrasenaLogin").value;
   const mensaje = document.getElementById("mensajeLogin");
@@ -613,7 +615,7 @@ window.addEventListener("load", async () => {
     AbrirDashboard();
   }
 });
-}
+
 inicializarUsuarios();
 inicializarListas();
 verificarSesion();
