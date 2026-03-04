@@ -38,8 +38,34 @@ async function obtenerDatos() {
   return [];
 }
 
-function guardarDatos(datos) {
+function guardarDatos(datos, autoExport = true) {
+  // Guarda en almacenamiento local (o memoria)
   appStorage.setItem("datos", JSON.stringify(datos));
+  // Al guardar, opcionalmente también generamos un archivo descargable
+  if (autoExport) {
+    exportarDatos();
+  }
+}
+
+// Genera y descarga un fichero JSON con los datos actuales.
+// El usuario debe aceptar la descarga y luego, si lo desea,
+// reemplazar el `datos-recomendaciones.json` en el proyecto.
+function exportarDatos() {
+  try {
+    const contenido = appStorage.getItem("datos") || "[]";
+    const blob = new Blob([contenido], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "datos-recomendaciones.json";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error("No se pudo exportar datos:", e);
+  }
 }
 
 // Tipos extra almacenados por el usuario (además de los derivados de datos)
