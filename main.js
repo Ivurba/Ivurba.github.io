@@ -501,7 +501,7 @@ async function anadir() {
   document.getElementById("PortadaNueva").value = "";
 
   window.location.href = "index.html";
-
+}
 
 // ===== FUNCIONES DE SESIÓN =====
 
